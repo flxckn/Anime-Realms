@@ -1,7 +1,14 @@
+-- CryptServer
+-- essentially a framework for Single-Script architecture
+-- with client-server communication handled within
+-- uses "Systems" as module scripts to handle game logic
+
 local CryptServer = {}
 
 local systems = {}
 local clientSystems = {}
+
+-- type definitions
 
 type SystemDef = {
 	Name: string,
@@ -24,11 +31,14 @@ local Players = game:GetService("Players")
 local InvalidExposeName = { "_Comm", "Name" }
 local Util = {}
 
+-- startup variables
+
 local initialized = false
 local created = false
 local started = false
 local ready = false
 
+-- utility module loader
 local function initUtil()
 	for _, module in script.Parent.Parent:GetChildren() do
 		if module:IsA("ModuleScript") and module.Name ~= "Crypt" then
@@ -37,6 +47,7 @@ local function initUtil()
 	end
 end
 
+-- checks for valid table indexing which does not use any taken names
 local function validateExposeName(exposeName)
 	if table.find(InvalidExposeName, exposeName) then
 		return false
@@ -44,12 +55,14 @@ local function validateExposeName(exposeName)
 	return true
 end
 
+-- prepare middleware remotefunction
 local function createMiddleware()
 	local mdw = Instance.new("RemoteFunction")
 	mdw.Name = "CMiddleware"
 	mdw.Parent = script.Parent
 end
 
+-- prepare systems folder
 local function createSystemsFolder()
 	if script.Parent:FindFirstChild("Systems") then
 		return
@@ -60,6 +73,7 @@ local function createSystemsFolder()
 	systemFolder.Parent = script.Parent
 end
 
+-- handle system folder creation
 local function createSystemFolder(systemName)
 	local systemsFolder = script.Parent.Systems
 
@@ -73,6 +87,7 @@ local function createSystemFolder(systemName)
 	end
 end
 
+-- handle signal creation
 local function createSignal(clientSystem, commName, instanceType)
 	local signal = Instance.new(instanceType)
 	signal.Name = commName
@@ -85,11 +100,18 @@ local function createSignal(clientSystem, commName, instanceType)
 	return signal
 end
 
+-- checks for duplicate names then creates signal
 local function initSignal(clientSystem, commName, instanceType)
 	assert(not clientSystem._Comm[commName], "Cannot have duplicate comm names")
 	return createSignal(clientSystem, commName, instanceType)
 end
 
+--[[
+assigns remotefunction callback
+	which when called by a client upon joining
+    will return the systems the client uses
+	when ready
+]]
 local function initSignals()
 	script.Parent.CMiddleware.OnServerInvoke = function()
 		if not ready then
@@ -101,6 +123,7 @@ local function initSignals()
 	end
 end
 
+-- gets the Data system
 local function findData()
 	for _, system: System in systems do
 		if system.Name:match("Data") then
@@ -110,6 +133,7 @@ local function findData()
 	return nil
 end
 
+-- prepares the Data system to work smoothly with other systems
 local function initData()
 	local ds = findData()
 	local runMode = game:GetService("RunService"):IsRunMode() and #Players:GetPlayers() == 0
@@ -159,6 +183,7 @@ local function initData()
 	return ds
 end
 
+-- requires modules from path
 function CryptServer.Include(path: Folder)
 	for _, module in path:GetChildren() do
 		local s, e =  pcall(require, module)
@@ -166,6 +191,7 @@ function CryptServer.Include(path: Folder)
 	end
 end
 
+-- requires and initializes modules from path as util for all systems
 function CryptServer.Utils(path: Folder)
 	local utils = {}
 	for _, module in path:GetChildren() do
@@ -178,6 +204,16 @@ function CryptServer.Utils(path: Folder)
 	end
 end
 
+--[[
+registers a system to the script handler
+	will add default util
+	returns the system
+
+	has an Expose method
+		Expose is used to allow for client-server communication via System methods
+		handles remoteevents and remotefunctions
+		will add such methods to the System table 
+]]
 function CryptServer.Register(systemDef: SystemDef): System
 	local system = systemDef
 	system.Util = Util
@@ -234,10 +270,19 @@ function CryptServer.Register(systemDef: SystemDef): System
 	return system
 end
 
+-- returns a system table
 function CryptServer.Import(system: string)
 	return systems[system]
 end
 
+--[[
+begins running the CryptServer
+	runs each system per how said system was intended to run
+		ex. asynchronously/syncrhonously,
+		initializes if has said method
+		starts if has said method
+	warns of runtime errors
+]]
 function CryptServer.Start()
 	assert(not started, "Cannot start Crypt: Already started!")
 	started = true
@@ -287,11 +332,13 @@ function CryptServer.Start()
 	ready = true
 end
 
+-- if required, and not already in memory, will initialize the util one time
 if not initialized then
 	initialized = true
 	initUtil()
 end
 
+-- if required, and not already in memory, will create systems folder one time
 if not created then
 	created = true
 	createSystemsFolder()
